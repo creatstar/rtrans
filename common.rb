@@ -1,4 +1,6 @@
 #!/usr/bin/ruby
+#
+#
 
 module RTransCommon
     METADATA_FILE = "metadata"
