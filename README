@@ -14,7 +14,7 @@ data_dir +
             + index.0
             + data.0
 
-metadata structrue: [format_version, size_per_index, index_num_per_file, max_size_data_file, data_blk_size], size: 2+4+4+8+4 = 22 bytes
+metadata structrue: [format_version, size_per_index, index_num_per_file, index_file_num_per_dir,max_size_data_file, data_blk_size], size: 2+4+4+4+8+4 = 26 bytes
 index structrue: [transid, dir_no, file_no, data_blk_no, data_len, checksum, preserve], size: 8+4+4+8+4+4+8 = 40
 data structure: [transid, checksum, raw_datapack]
 
@@ -22,6 +22,7 @@ data structure: [transid, checksum, raw_datapack]
 format_version: 16-bits unsigned integer (S)
 size_per_index: 32-bits unsigned integer (L)
 index_num_per_file: 32-bits unsigned integer (L)
+index_file_num_per_dir: 32-bits unsigned integer (L)
 max_size_data_file: 64-bits unsigned integer (Q)
 data_blk_size: 32-bits unsigned integer (L)
 preserve: 64-bits unsigned integer (Q)
@@ -32,3 +33,5 @@ file_no: 32-bits unsigned integer (L)
 data_blk_no: 64-bits unsigned integer (Q)
 data_len: 32-bits unsigned integer(L)
 check_sum: 32-bits unsigned integer(L)
+
+transid start from 1, 0 stands for nil
