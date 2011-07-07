@@ -6,6 +6,10 @@ module RTransCommon
     METADATA_FILE = "metadata"
     METADATA_PACK = "S1L1L1L1Q1L1"
 
+    INDEX_BLK_LEN = 40
+    INDEX_PREFIX = "index."
+    INDEX_PACK = "Q1L1L1Q1L1L1Q1"
+
     module RTransError
         class InternalError < StandardError; end
 

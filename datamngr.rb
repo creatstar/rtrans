@@ -1,6 +1,7 @@
 #!/usr/bin/ruby
 require 'logger'
 require 'common'
+require 'zlib'
 
 module RTrans
     class Datamngr
@@ -17,12 +18,17 @@ module RTrans
                 config[:index_file_num_per_dir], 1)
             @max_size_data_file = RTransCommon.check_type_return(config[:max_size_data_file], 1)
             @data_blk_size = RTransCommon.check_type_return(config[:data_blk_size], 1)
+            @blk_num_per_file = @max_size_data_file / @data_blk_size
 =begin
             puts @data_dir, @format_version, @size_per_index,
                 @index_num_per_file, @max_size_data_file, @data_blk_size
 =end                
             # do init check on the metadata file
             init_check
+            
+            # single thread writing, so only need one mark
+            @cur_transid = get_biggest_transid
+            @cur_dno, @cur_fno, @cur_offside_in_f = get_index_by_transid(@cur_transid)
         end
 
         def init_check
@@ -38,8 +44,7 @@ module RTrans
                 # the meta file exists, so check the given parameters
                 # metadata structure: [format_version, size_per_index,
                 # index_num_per_file, max_size_data_file, data_blk_size]
-                metadata_blk = File.open(@metadata_file).sysread(
-                    RTransCommon::METADATA_BLK_LEN)
+                metadata_blk = File.open(@metadata_file).sysread(RTransCommon::METADATA_BLK_LEN)
                 metadata_array = metadata_blk.unpack(RTransCommon::METADATA_PACK)
                 RTransCommon.check_parameter("format_version", metadata_array[0], @format_version)
                 RTransCommon.check_parameter("size_per_index", metadata_array[1], @size_per_index)
@@ -61,11 +66,41 @@ module RTrans
         end
 
         def write_data(data)
-            
+            # prepare the data
+            data_blk, data_len, crc_checksum = prepare_data(data)
+
+            # note that we should write the data file first, then the data file
+            # but we should check whether we need split index file first
+            # write data file first
+            data_dno, data_fno, data_offside = get_pos_for_data(@transid, data_len)
+            d_name = File.expand_path(data_dno.to_s, @data_dir)
+            f_name = File.expand_path(data_fno.to_s, d_name)
+            f = File.open(f_name, "a").seek(data_offside*@data_blk_size, IO::SEEK_SET)
+            data_head = [@transid+1, crc_checksum].pack(RTransCommon::DATA_HEAD_PACK)
+            f.syswrite(data_head)
+            f.syswrite(data_blk)
+            f.sync if @need_sync
+            f.close
+
+            # write index file 
+            , idx_dno, idx_fno, idx_offside = get_pos_by_transid(@transid+1)
+            d_name = File.expand_path(idx_dno.to_s, @data_dir)
+            f_name = File.expand_path(idx_fno.to_s, @data_dir)
+            f = File.open(f_name, "a").seek(idx_offside*RTransCommon::INDEX_BLK_LEN, IO::SEEK_SET)
+            idx_blk = [@transid+1, d_name, f_name, data_offside,
+                data_len, crc_checksum, "0"].pack(RTransCommon::INDEX_PACK)
+            f.syswrite(idx_blk)
+            f.sync if @need_sync
+            f.close
+
+            @transid += 1
         end
 
-        def write_datafile_by_transid(transid)
-            
+        def prepare_data(data)
+            data_blk = Marshal.dump(data)
+            data_len = data_blk.size
+            crc_checksum = Zlib.crc32(data_blk)
+            [data_blk, data_len, crc_checksum]
         end
 
         def get_smallest_and_biggest_numeric_dir
@@ -86,7 +121,7 @@ module RTrans
             [smallest_no, biggest_no]
         end
 
-        def get_index_by_transid(transid)
+        def get_pos_by_transid(transid)
             return 0 if transid <= 0
 
             a = transid / (@index_num_per_file * @index_file_num_per_dir)
@@ -98,10 +133,52 @@ module RTrans
             b = transid_offside_in_d % @index_num_per_file
             f_no = (b == 0)? a-1 : a
 
-            blk_offsite_in_f = transid_offside_in_d - (f_no * @index_num_per_file) - 1 
+            blk_offside_in_f = transid_offside_in_d - (f_no * @index_num_per_file) - 1 
            
-            puts transid, d_no, f_no, blk_offsite_in_f
-            puts "*****************"
+            [transid, d_no, f_no, blk_offside_in_f]
+        end
+
+        def get_index_by_pos(dno, fno, offside_in_f)
+            idx_file = File.expand_path(dno.to_s, @data_dir)
+            idx_file = File.expand_path(fno, idx_file)
+            
+            idx_blk = File.open(idx_file).sysread(RTransCommon::INDEX_BLK_LEN)
+            idx_array = idx_blk.unpack(RTransCommon::INDEX_PACK)
+            idx_array
+        end
+
+        def get_pos_for_data(transid, data_len)
+            transid_old, d_no_old, f_no_old, offside_old = get_pos_by_transid(transid)
+            transid_new, d_no_new, f_no_new, offside_new = get_pos_by_transid(transid+1)
+
+            if d_no_old == d_no_new
+                # no need to create dir
+                idx_array = get_index_by_pos(get_pos_by_transid(transid))
+                # check whether we should split the data file
+                blk_offside = (data_len/@data_blk_size).ceil + (idx_array[4]/@data_blk_size).ceil
+                if (idx_array[3] + blk_offside) >= @blk_num_per_file
+                    # need to split the data file
+                    data_dno = idx_array[1]
+                    data_fno = idx_array[2] + 1
+                    data_offside = 0
+                    return [data_dno, data_fno, data_offside]
+                else
+                    # need not split the data file
+                    data_dno = idx_array[1]
+                    data_fno = idx_array[2]
+                    data_offside = idx_array[3] + (idx_array[4]/@data_blk_size).ceil
+                    return [data_dno, data_fno, data_offside]
+                end
+            else
+                # need to create dir
+                data_dno = d_no_new
+                data_fno = 0
+                data_offside = 0
+
+                d_name = File.expand_path(data_dno.to_s, @data_dir)
+                Dir.mkdir(d_name)
+                return [data_dno, data_fno, data_offside]
+            end
         end
 
         def get_smallest_transid

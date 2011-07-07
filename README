@@ -32,6 +32,6 @@ dir_no: 32-bits unsigned integer (L)
 file_no: 32-bits unsigned integer (L)
 data_blk_no: 64-bits unsigned integer (Q)
 data_len: 32-bits unsigned integer(L)
-check_sum: 32-bits unsigned integer(L)
+check_sum: 32-bits unsigned integer(L) CRC check sum
 
 transid start from 1, 0 stands for nil
