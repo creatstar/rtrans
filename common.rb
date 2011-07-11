@@ -11,6 +11,7 @@ module RTransCommon
     INDEX_PACK = "Q1L1L1Q1L1L1Q1"
 
     DATA_HEAD_LEN = 12
+    DATA_PREFIX = "data."
     DATA_HEAD_PACK = "Q1L1"
 
     module RTransError
@@ -18,6 +19,7 @@ module RTransCommon
 
         class BadArguments < StandardError; end
         class BadType < StandardError; end
+        class BadChecksum < StandardError; end
     end
     
     def self.check_parameter(param_name, param_val, expect)
