@@ -10,6 +10,9 @@ module RTransCommon
     INDEX_PREFIX = "index."
     INDEX_PACK = "Q1L1L1Q1L1L1Q1"
 
+    DATA_HEAD_LEN = 12
+    DATA_HEAD_PACK = "Q1L1"
+
     module RTransError
         class InternalError < StandardError; end
 
