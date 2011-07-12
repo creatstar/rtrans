@@ -6,6 +6,10 @@ require 'zlib'
 module RTrans
     class Datamngr
         def initialize (config = {})
+
+            RTransCommon.assert_supported_keys(config,[:need_sync, :need_checksum, :need_compress,
+                :data_dir, :format_version, :size_per_index, :index_num_per_file, :index_file_num_per_dir,
+                :max_size_data_file, :data_blk_size] )
             RTransCommon.assert_required_keys(config, [:data_dir, :format_version,
                 :size_per_index, :index_num_per_file, :index_file_num_per_dir,
                 :max_size_data_file, :data_blk_size])
@@ -19,18 +23,18 @@ module RTrans
             @max_size_data_file = RTransCommon.check_type_return(config[:max_size_data_file], 1)
             @data_blk_size = RTransCommon.check_type_return(config[:data_blk_size], 1)
             @blk_num_per_file = @max_size_data_file / @data_blk_size
-            @need_sync = 1
-            @need_checksum = 1
+            @need_sync = (config[:need_sync].nil?)? 0 : config[:need_sync]
+            @need_checksum = (config[:need_checksum].nil?)? 0 : config[:need_checksum]
+            @need_compress = (config[:need_compress].nil?)? 0 : config[:need_compress]
 =begin
             puts @data_dir, @format_version, @size_per_index,
                 @index_num_per_file, @max_size_data_file, @data_blk_size
 =end                
             # do init check on the metadata file
             init_check
-            
+
             # single thread writing, so only need one mark
             @cur_transid = get_biggest_transid
-            #@cur_dno, @cur_fno, @cur_offside_in_f = get_index_by_transid(@cur_transid)
         end
 
         def init_check
@@ -55,10 +59,11 @@ module RTrans
                     @index_file_num_per_dir)
                 RTransCommon.check_parameter("max_size_data_file", metadata_array[4], @max_size_data_file)
                 RTransCommon.check_parameter("data_blk_size", metadata_array[5], @data_blk_size)
+                RTransCommon.check_parameter("need_compress", metadata_array[6], @need_compress)
             else
                 # the meta not exists, so create the metadata file
                 metadata_blk = [@format_version, @size_per_index, @index_num_per_file,
-                    @index_file_num_per_dir, @max_size_data_file, @data_blk_size].pack(
+                    @index_file_num_per_dir, @max_size_data_file, @data_blk_size, @need_compress].pack(
                     RTransCommon::METADATA_PACK)
                 f = File.open(@metadata_file, "w")
                 f.syswrite(metadata_blk)
@@ -104,7 +109,7 @@ module RTrans
             data_head = [@cur_transid+1, crc_checksum].pack(RTransCommon::DATA_HEAD_PACK)
             f.syswrite(data_head)
             f.syswrite(data_blk)
-            f.sync if @need_sync
+            f.sync if @need_sync != 0
             f.close
             #p "write", [@cur_transid+1, data_dno, data_fno, data_offside, data_len]
 
@@ -118,13 +123,19 @@ module RTrans
             idx_blk = [@cur_transid+1, data_dno, data_fno, data_offside,
                 data_len, crc_checksum, 0].pack(RTransCommon::INDEX_PACK)
             f.syswrite(idx_blk)
-            f.sync if @need_sync
+            f.sync if @need_sync != 0
             f.close
 
             @cur_transid += 1
         end
 
         def prepare_data(data)
+            if @need_compress != 0
+                mydeflater= Zlib::Deflate.new(Zlib::DEFAULT_COMPRESSION)
+                data = mydeflater.deflate(data, Zlib::FINISH)
+                mydeflater.close
+            end
+
             data_blk = Marshal.dump(data)
             data_len = data_blk.size
             crc_checksum = Zlib.crc32(data_blk)
@@ -188,7 +199,7 @@ module RTrans
             data_blk = data_file.sysread(data_len)
             
             #check the checksum
-            if @need_checksum
+            if @need_checksum != 0
                 if check_sum != Zlib.crc32(data_blk)
                     raise RTransCommon::RTransError::BadChecksum,
                         "wrong checksum, the one in the index is #{check_sum},\
@@ -196,6 +207,13 @@ module RTrans
                 end
             end
             data = Marshal.load(data_blk)
+            
+            if @need_compress != 0
+                myinflater = Zlib::Inflate.new()
+                data = data.inflate(data)
+                myinflater.finish
+            end
+
             data
         end
 

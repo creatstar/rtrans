@@ -4,7 +4,7 @@ module RTransCommon
 
     METADATA_BLK_LEN = 26
     METADATA_FILE = "metadata"
-    METADATA_PACK = "S1L1L1L1Q1L1"
+    METADATA_PACK = "S1L1L1L1Q1L1S1"
 
     INDEX_BLK_LEN = 40
     INDEX_PREFIX = "index."
