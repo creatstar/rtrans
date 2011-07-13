@@ -80,16 +80,17 @@ module RTrans
             idx_array = get_index_by_pos(idx_dno, idx_fno, idx_offside)
 
             #read data
-            data_dno = idx_array[1]
-            data_fno = idx_array[2]
-            data_blk_no = idx_array[3]
-            data_len = idx_array[4]
-            checksum = idx_array[5]
+            type_no = idx_array[1]
+            data_dno = idx_array[2]
+            data_fno = idx_array[3]
+            data_blk_no = idx_array[4]
+            data_len = idx_array[5]
+            checksum = idx_array[6]
             #p idx_array
             get_data_by_pos(data_dno, data_fno, data_blk_no, data_len, checksum)
         end
 
-        def write_data(data)
+        def write_data(type_no, data)
             # prepare the data
             data_blk, data_len, crc_checksum = prepare_data(data)
 
@@ -120,8 +121,8 @@ module RTrans
             f = File.open(f_name, "a")
             #f.seek(idx_offside*RTransCommon::INDEX_BLK_LEN, IO::SEEK_SET)
 
-            idx_blk = [@cur_transid+1, data_dno, data_fno, data_offside,
-                data_len, crc_checksum, 0].pack(RTransCommon::INDEX_PACK)
+            idx_blk = [@cur_transid+1, type_no, data_dno, data_fno, data_offside,
+                data_len, crc_checksum].pack(RTransCommon::INDEX_PACK)
             f.syswrite(idx_blk)
             f.sync if @need_sync != 0
             f.close
