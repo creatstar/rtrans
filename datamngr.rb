@@ -52,14 +52,20 @@ module RTrans
                 # index_num_per_file, max_size_data_file, data_blk_size]
                 metadata_blk = File.open(@metadata_file).sysread(RTransCommon::METADATA_BLK_LEN)
                 metadata_array = metadata_blk.unpack(RTransCommon::METADATA_PACK)
-                RTransCommon.check_parameter("format_version", metadata_array[0], @format_version)
-                RTransCommon.check_parameter("size_per_index", metadata_array[1], @size_per_index)
-                RTransCommon.check_parameter("index_num_per_file", metadata_array[2], @index_num_per_file)
-                RTransCommon.check_parameter("index_file_num_per_dir", metadata_array[3],
-                    @index_file_num_per_dir)
-                RTransCommon.check_parameter("max_size_data_file", metadata_array[4], @max_size_data_file)
-                RTransCommon.check_parameter("data_blk_size", metadata_array[5], @data_blk_size)
-                RTransCommon.check_parameter("need_compress", metadata_array[6], @need_compress)
+                RTransCommon.check_parameter("format_version",
+                    metadata_array[RTransCommon::METADATA_HASH[:FORMAT_VERSION]], @format_version)
+                RTransCommon.check_parameter("size_per_index",
+                    metadata_array[RTransCommon::METADATA_HASH[:SIZE_PER_INDEX]], @size_per_index)
+                RTransCommon.check_parameter("index_num_per_file",
+                    metadata_array[RTransCommon::METADATA_HASH[:INDEX_NUM_PER_FILE]], @index_num_per_file)
+                RTransCommon.check_parameter("index_file_num_per_dir",
+                    metadata_array[RTransCommon::METADATA_HASH[:INDEX_FILE_NUM_PIR_DIR]], @index_file_num_per_dir)
+                RTransCommon.check_parameter("max_size_data_file",
+                    metadata_array[RTransCommon::METADATA_HASH[:MAX_SIZE_DATA_FILE]], @max_size_data_file)
+                RTransCommon.check_parameter("data_blk_size",
+                    metadata_array[RTransCommon::METADATA_HASH[:DATA_BLK_SIZE]], @data_blk_size)
+                RTransCommon.check_parameter("need_compress",
+                    metadata_array[RTransCommon::METADATA_HASH[:NEED_COMPRESS]], @need_compress)
             else
                 # the meta not exists, so create the metadata file
                 metadata_blk = [@format_version, @size_per_index, @index_num_per_file,
@@ -80,12 +86,12 @@ module RTrans
             idx_array = get_index_by_pos(idx_dno, idx_fno, idx_offside)
 
             #read data
-            type_no = idx_array[1]
-            data_dno = idx_array[2]
-            data_fno = idx_array[3]
-            data_blk_no = idx_array[4]
-            data_len = idx_array[5]
-            checksum = idx_array[6]
+            type_no = idx_array[RTransCommon::INDEX_HASH[:TYPE_NO]]
+            data_dno = idx_array[RTransCommon::INDEX_HASH[:DIR_NO]]
+            data_fno = idx_array[RTransCommon::INDEX_HASH[:FILE_NO]]
+            data_blk_no = idx_array[RTransCommon::INDEX_HASH[:DATA_BLK_NO]]
+            data_len = idx_array[RTransCommon::INDEX_HASH[:DATA_LEN]]
+            checksum = idx_array[RTransCommon::INDEX_HASH[:CHECK_SUM]]
             #p idx_array
             get_data_by_pos(data_dno, data_fno, data_blk_no, data_len, checksum)
         end
@@ -237,20 +243,21 @@ module RTrans
                 idx_array = get_index_by_pos(d_no_old, f_no_old, offside_old)
 
                 # check whether we should split the data file
-                blk_offside = ((data_len + RTransCommon::DATA_HEAD_LEN)/@data_blk_size.to_f).ceil
-                    + ((idx_array[4] + RTransCommon::DATA_HEAD_LEN)/@data_blk_size.to_f).ceil
-                if (idx_array[3] + blk_offside) >= @blk_num_per_file
+                new_blk_num = ((data_len + RTransCommon::DATA_HEAD_LEN)/@data_blk_size.to_f).ceil
+                old_blk_num = ((idx_array[RTransCommon::INDEX_HASH[:DATA_LEN]] + RTransCommon::DATA_HEAD_LEN)/@data_blk_size.to_f).ceil
+                blk_offside = new_blk_num + old_blk_num
+                    
+                if (idx_array[RTransCommon::INDEX_HASH[:DATA_BLK_NO]] + blk_offside) >= @blk_num_per_file
                     # need to split the data file
-                    data_dno = idx_array[1]
-                    data_fno = idx_array[2] + 1
+                    data_dno = idx_array[RTransCommon::INDEX_HASH[:DIR_NO]]
+                    data_fno = idx_array[RTransCommon::INDEX_HASH[:FILE_NO]] + 1
                     data_offside = 0
                     return [data_dno, data_fno, data_offside]
                 else
                     # need not split the data file
-                    data_dno = idx_array[1]
-                    data_fno = idx_array[2]
-                    data_offside = idx_array[3] +
-                        ((idx_array[4]+RTransCommon::DATA_HEAD_LEN)/@data_blk_size.to_f).ceil
+                    data_dno = idx_array[RTransCommon::INDEX_HASH[:DIR_NO]]
+                    data_fno = idx_array[RTransCommon::INDEX_HASH[:FILE_NO]]
+                    data_offside = idx_array[RTransCommon::INDEX_HASH[:DATA_BLK_NO]] + old_blk_num
                     return [data_dno, data_fno, data_offside]
                 end
             else
